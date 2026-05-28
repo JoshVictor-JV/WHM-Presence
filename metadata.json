@@ -1,0 +1,6 @@
+{
+  "name": "WHM Presence",
+  "description": "Global church branch management and presence platform for Worship Harvest Ministries, featuring dynamic hierarchies, interactive Mapbox maps, and real-time updates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

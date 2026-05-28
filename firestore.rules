@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable Security Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      // Allow during development or verify securely
+      return request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'jvjoshvictor@gmail.com' ||
+        request.auth.token.email == 'admin.whm@worshipharvest.org' ||
+        request.auth.token.email.matches('^admin.*') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow create: if isSignedIn() && isOwner(userId) && 
+                      incoming().keys().hasAll(['uid', 'email', 'displayName', 'role', 'createdAt']) &&
+                      incoming().keys().size() == 5 &&
+                      incoming().uid == request.auth.uid &&
+                      incoming().email == request.auth.token.email &&
+                      incoming().role in ['admin', 'viewer'] &&
+                      // Limit privilege escalation on bootstrap unless match bootstrap email
+                      (incoming().role == 'viewer' || 
+                       request.auth.token.email == 'jvjoshvictor@gmail.com' ||
+                       request.auth.token.email.matches('^admin.*'));
+      
+      allow update: if isSignedIn() && isOwner(userId) &&
+                      incoming().uid == existing().uid &&
+                      incoming().email == existing().email &&
+                      // Forbid normal users from escalating own privileges
+                      (incoming().role == existing().role || isAdmin()) &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role']);
+      
+      allow delete: if isAdmin();
+    }
+
+    // --- Hierarchy Levels Collection ---
+    match /hierarchy_levels/{levelId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidId(levelId) &&
+                      incoming().keys().hasAll(['id', 'name', 'color', 'icon', 'orderIndex']) &&
+                      incoming().keys().size() == 5 &&
+                      incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100 &&
+                      incoming().color is string && incoming().color.size() <= 32 &&
+                      incoming().icon is string && incoming().icon.size() <= 64 &&
+                      incoming().orderIndex is int;
+                      
+      allow update: if isAdmin() && isValidId(levelId) &&
+                      incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100 &&
+                      incoming().color is string && incoming().color.size() <= 32 &&
+                      incoming().icon is string && incoming().icon.size() <= 64 &&
+                      incoming().orderIndex is int &&
+                      incoming().diff(existing()).affectedKeys().hasAny(['name', 'color', 'icon', 'orderIndex']);
+                      
+      allow delete: if isAdmin();
+    }
+
+    // --- Branches Collection ---
+    match /branches/{branchId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidId(branchId) &&
+                      incoming().keys().hasAll(['id', 'name', 'country', 'city', 'address', 'latitude', 'longitude', 'leaderName', 'leaderPhone', 'leaderEmail', 'hierarchyLevel', 'branchColor', 'notes', 'createdAt', 'updatedAt']) &&
+                      incoming().keys().size() == 14 &&
+                      incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 150 &&
+                      incoming().country is string && incoming().country.size() > 0 && incoming().country.size() <= 100 &&
+                      incoming().city is string && incoming().city.size() > 0 && incoming().city.size() <= 100 &&
+                      incoming().latitude is number &&
+                      incoming().longitude is number &&
+                      incoming().leaderName is string && incoming().leaderName.size() > 0 && incoming().leaderName.size() <= 150 &&
+                      incoming().leaderPhone is string && incoming().leaderPhone.size() <= 32 &&
+                      incoming().leaderEmail is string && incoming().leaderEmail.size() <= 150 &&
+                      incoming().hierarchyLevel is string &&
+                      // Enforce referential integrity: related hierarchy level must exist
+                      exists(/databases/$(database)/documents/hierarchy_levels/$(incoming().hierarchyLevel)) &&
+                      incoming().createdAt == request.time &&
+                      incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() && isValidId(branchId) &&
+                      incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 150 &&
+                      incoming().country is string && incoming().country.size() > 0 && incoming().country.size() <= 100 &&
+                      incoming().city is string && incoming().city.size() > 0 && incoming().city.size() <= 100 &&
+                      incoming().latitude is number &&
+                      incoming().longitude is number &&
+                      incoming().leaderName is string && incoming().leaderName.size() > 0 && incoming().leaderName.size() <= 150 &&
+                      incoming().hierarchyLevel is string &&
+                      exists(/databases/$(database)/documents/hierarchy_levels/$(incoming().hierarchyLevel)) &&
+                      // Ensure created time is immutable
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().updatedAt == request.time &&
+                      incoming().diff(existing()).affectedKeys().hasAny(['name', 'country', 'city', 'address', 'latitude', 'longitude', 'leaderName', 'leaderPhone', 'leaderEmail', 'hierarchyLevel', 'branchColor', 'notes', 'updatedAt']);
+
+      allow delete: if isAdmin();
+    }
+  }
+}

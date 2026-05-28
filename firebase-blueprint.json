@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account detail and role in WHM Presence",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Authentication User ID" },
+        "email": { "type": "string", "format": "email", "description": "Email address of the user" },
+        "displayName": { "type": "string", "description": "Readable display name" },
+        "role": { "type": "string", "enum": ["admin", "viewer"], "description": "System privilege tier" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Profile registration timestamp" }
+      },
+      "required": ["uid", "email"]
+    },
+    "HierarchyLevel": {
+      "title": "Hierarchy Level",
+      "description": "Dynamically configured organizational tiers like Region, Zone, Hub, Campus",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for this tier" },
+        "name": { "type": "string", "description": "Name of structural level (e.g. Missional Community)" },
+        "color": { "type": "string", "description": "Hex or web color code for maps" },
+        "icon": { "type": "string", "description": "Lucide icon name representation" },
+        "orderIndex": { "type": "integer", "description": "Sorting priority for representation" }
+      },
+      "required": ["name", "color", "icon", "orderIndex"]
+    },
+    "Branch": {
+      "title": "Church Branch",
+      "description": "Individual church branch metadata, location, leadership, and level",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the branch" },
+        "name": { "type": "string", "description": "Name of the church branch" },
+        "country": { "type": "string", "description": "Country where the branch operates" },
+        "city": { "type": "string", "description": "City location" },
+        "address": { "type": "string", "description": "Full street address" },
+        "latitude": { "type": "number", "description": "Lattitude coordinates in decimal degrees" },
+        "longitude": { "type": "number", "description": "Longitude coordinates in decimal degrees" },
+        "leaderName": { "type": "string", "description": "Lead pastor or leader in charge" },
+        "leaderPhone": { "type": "string", "description": "Leader contact phone number" },
+        "leaderEmail": { "type": "string", "format": "email", "description": "Leader contact email" },
+        "hierarchyLevel": { "type": "string", "description": "ID of associated HierarchyLevel document" },
+        "branchColor": { "type": "string", "description": "Explicit color override if any" },
+        "notes": { "type": "string", "description": "Operational notes or comments" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp in server time" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["name", "country", "city", "latitude", "longitude", "leaderName", "hierarchyLevel"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User registry storage"
+    },
+    "/hierarchy_levels/{levelId}": {
+      "schema": { "$ref": "HierarchyLevel" },
+      "description": "Dynamically configured church hierarchy layers"
+    },
+    "/branches/{branchId}": {
+      "schema": { "$ref": "Branch" },
+      "description": "Church locations, positions, leaders, and descriptions"
+    }
+  }
+}
