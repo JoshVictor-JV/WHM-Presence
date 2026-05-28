@@ -9,7 +9,7 @@ interface BranchFormModalProps {
 }
 
 export const BranchFormModal: React.FC<BranchFormModalProps> = ({ branch, onClose }) => {
-  const { hierarchyLevels, addBranch, editBranch } = useAppStore();
+  const { hierarchyLevels, branches, addBranch, editBranch } = useAppStore();
   
   const [name, setName] = useState('');
   const [country, setCountry] = useState('Uganda');
@@ -21,6 +21,7 @@ export const BranchFormModal: React.FC<BranchFormModalProps> = ({ branch, onClos
   const [leaderPhone, setLeaderPhone] = useState('');
   const [leaderEmail, setLeaderEmail] = useState('');
   const [hierarchyLevel, setHierarchyLevel] = useState('');
+  const [parentId, setParentId] = useState('');
   const [branchColor, setBranchColor] = useState('#8B5CF6');
   const [notes, setNotes] = useState('');
   
@@ -40,12 +41,14 @@ export const BranchFormModal: React.FC<BranchFormModalProps> = ({ branch, onClos
       setLeaderPhone(branch.leaderPhone || '');
       setLeaderEmail(branch.leaderEmail || '');
       setHierarchyLevel(branch.hierarchyLevel);
+      setParentId(branch.parentId || '');
       setBranchColor(branch.branchColor || '#8B5CF6');
       setNotes(branch.notes || '');
     } else if (hierarchyLevels.length > 0) {
       // Preselect first hierarchy level
       setHierarchyLevel(hierarchyLevels[0].id);
       setBranchColor(hierarchyLevels[0].color);
+      setParentId('');
     }
   }, [branch, hierarchyLevels]);
 
@@ -107,6 +110,7 @@ export const BranchFormModal: React.FC<BranchFormModalProps> = ({ branch, onClos
         leaderPhone: leaderPhone.trim(),
         leaderEmail: leaderEmail.trim(),
         hierarchyLevel,
+        parentId: parentId || '',
         branchColor,
         notes: notes.trim()
       };
@@ -222,6 +226,33 @@ export const BranchFormModal: React.FC<BranchFormModalProps> = ({ branch, onClos
                 </select>
               )}
             </div>
+          </div>
+
+          {/* Parent selection to support nesting and marking entire regions & regions within regions */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+              Parent Region / Location (Optional - Marks "Region Within Region" Relations)
+            </label>
+            <select
+              value={parentId}
+              onChange={e => setParentId(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-slate-205 focus:outline-none focus:border-purple-500/50 transition cursor-pointer"
+            >
+              <option value="" className="bg-[#0a0a0f] text-slate-400">-- No Parent Location (Root Level Node) --</option>
+              {branches
+                .filter(b => b.id !== branch?.id)
+                .map((parent) => {
+                  const pLevel = hierarchyLevels.find(l => l.id === parent.hierarchyLevel);
+                  return (
+                    <option key={parent.id} value={parent.id} className="bg-[#0a0a0f] text-slate-205">
+                      {parent.name} [{pLevel?.name || 'Unassigned'}] - {parent.city}, {parent.country}
+                    </option>
+                  );
+                })}
+            </select>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Select the parent item or region to group coordinates and plot nesting connections on the telemetry grid.
+            </p>
           </div>
 
           {/* Leaders Info */}

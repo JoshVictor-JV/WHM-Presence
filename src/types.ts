@@ -26,6 +26,7 @@ export interface Branch {
   leaderPhone: string;
   leaderEmail: string;
   hierarchyLevel: string; // links to HierarchyLevel.id
+  parentId?: string; // parent branch link
   branchColor?: string; // custom color override
   notes?: string;
   createdAt: string; // ISO string
