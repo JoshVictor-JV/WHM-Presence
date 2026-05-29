@@ -16,17 +16,140 @@ import {
   X,
   Compass, 
   Network, 
-  Share2
+  Share2,
+  ZoomIn
 } from 'lucide-react';
 
 interface MapLibreDashboardProps {
   onSelectCoords?: (lat: number, lng: number) => void;
   isSelectingCoords?: boolean;
+  isFullscreen?: boolean;
+  setIsFullscreen?: (val: boolean) => void;
 }
+
+const getStyleSpecification = (styleId: string): string | any => {
+  const isRetina = typeof window !== 'undefined' && window.devicePixelRatio > 1;
+
+  if (styleId === 'osm') {
+    return {
+      version: 8,
+      sources: {
+        'osm-raster': {
+          type: 'raster',
+          tiles: [
+            'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+            'https://b.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+            'https://c.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png'
+          ],
+          tileSize: 256,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap developers</a>'
+        }
+      },
+      layers: [
+        {
+          id: 'osm-raster-layer',
+          type: 'raster',
+          source: 'osm-raster',
+          minzoom: 0,
+          maxzoom: 19
+        }
+      ]
+    };
+  }
+  
+  if (styleId === 'opentopomap') {
+    return {
+      version: 8,
+      sources: {
+        'topo-raster': {
+          type: 'raster',
+          tiles: [
+            'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+            'https://b.tile.opentopomap.org/{z}/{x}/{y}.png',
+            'https://c.tile.opentopomap.org/{z}/{x}/{y}.png'
+          ],
+          tileSize: 256,
+          attribution: 'Map &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap contributors</a>, <a href="http://viewfinderpanoramas.org" target="_blank">SRTM</a>'
+        }
+      },
+      layers: [
+        {
+          id: 'topo-raster-layer',
+          type: 'raster',
+          source: 'topo-raster',
+          minzoom: 0,
+          maxzoom: 17
+        }
+      ]
+    };
+  }
+
+  if (styleId === 'cartodb-light') {
+    const tileSuffix = isRetina ? '@2x.png' : '.png';
+    return {
+      version: 8,
+      sources: {
+        'cartodb-light-raster': {
+          type: 'raster',
+          tiles: [
+            `https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}${tileSuffix}`,
+            `https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}${tileSuffix}`,
+            `https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}${tileSuffix}`,
+            `https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}${tileSuffix}`
+          ],
+          tileSize: isRetina ? 512 : 256,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OSM</a> &copy; <a href="https://carto.com/attributions" target="_blank">CARTO</a>'
+        }
+      },
+      layers: [
+        {
+          id: 'cartodb-light-layer',
+          type: 'raster',
+          source: 'cartodb-light-raster',
+          minzoom: 0,
+          maxzoom: 20
+        }
+      ]
+    };
+  }
+
+  if (styleId === 'cartodb-dark') {
+    const tileSuffix = isRetina ? '@2x.png' : '.png';
+    return {
+      version: 8,
+      sources: {
+        'cartodb-dark-raster': {
+          type: 'raster',
+          tiles: [
+            `https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}${tileSuffix}`,
+            `https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}${tileSuffix}`,
+            `https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}${tileSuffix}`,
+            `https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}${tileSuffix}`
+          ],
+          tileSize: isRetina ? 512 : 256,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OSM</a> &copy; <a href="https://carto.com/attributions" target="_blank">CARTO</a>'
+        }
+      },
+      layers: [
+        {
+          id: 'cartodb-dark-layer',
+          type: 'raster',
+          source: 'cartodb-dark-raster',
+          minzoom: 0,
+          maxzoom: 20
+        }
+      ]
+    };
+  }
+
+  return `https://tiles.openfreemap.org/styles/${styleId}`;
+};
 
 export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({ 
   onSelectCoords, 
-  isSelectingCoords = false 
+  isSelectingCoords = false,
+  isFullscreen: propIsFullscreen,
+  setIsFullscreen: propSetIsFullscreen
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -50,8 +173,69 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [viewport, setViewport] = useState({ lat: 0.3476, lng: 32.5825, zoom: 2.5 });
   const [isLightMode, setIsLightMode] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [localIsFullscreen, setLocalIsFullscreen] = useState(false);
+  const isFullscreen = propIsFullscreen !== undefined ? propIsFullscreen : localIsFullscreen;
+  const setIsFullscreen = propSetIsFullscreen !== undefined ? propSetIsFullscreen : setLocalIsFullscreen;
   const [showGuide, setShowGuide] = useState(true);
+  
+  // Custom Map style with dynamic options selector
+  const [selectedStyle, setSelectedStyle] = useState<'liberty' | 'dark' | 'positron' | 'bright' | 'osm' | 'opentopomap' | 'cartodb-light' | 'cartodb-dark'>('liberty');
+
+  // Dynamic map label font scale multiplier
+  const [labelTextSizeScale, setLabelTextSizeScale] = useState<number>(1.3);
+  const originalTextSizesRef = useRef<Record<string, any>>({});
+
+  // Increment when styledata loads so custom layers can be redrawn
+  const [styleLoadedToken, setStyleLoadedToken] = useState(0);
+
+  // Visual Zoom Magnification Factor to visually scale up map representation at fixed scale
+  const [magnification, setMagnification] = useState<number>(1.0);
+
+  // Nominatim Autocomplete Suggestions State
+  const [placeSuggestions, setPlaceSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+
+  // Nominatim Places API suggestion fetch loop
+  useEffect(() => {
+    if (searchQuery.trim().length < 3) {
+      setPlaceSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingPlaces(true);
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          setPlaceSuggestions(data);
+        }
+      } catch (err) {
+        console.warn("Places autocomplete search fallback active:", err);
+      } finally {
+        setIsSearchingPlaces(false);
+      }
+    }, 550);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleSelectSuggestion = (place: { display_name: string; lat: string; lon: string }) => {
+    const lat = parseFloat(place.lat);
+    const lon = parseFloat(place.lon);
+    
+    if (mapRef.current) {
+      mapRef.current.flyTo({
+        center: [lon, lat],
+        zoom: 11,
+        speed: 1.5,
+        essential: true
+      });
+    }
+    
+    setPlaceSuggestions([]);
+  };
 
   // Filter calculations from active store state
   const filteredBranches = useMemo(() => {
@@ -116,7 +300,7 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
     try {
       const map = new maplibregl.Map({
         container: mapContainerRef.current,
-        style: isLightMode ? 'https://tiles.openfreemap.org/styles/positron' : 'https://tiles.openfreemap.org/styles/dark',
+        style: getStyleSpecification(selectedStyle),
         center: [32.5825, 0.3476], // Kampala center as default
         zoom: 2.5,
         pitch: 30, // 3D elevation pitch
@@ -125,6 +309,7 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
       });
 
       map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
+      map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
 
       map.on('load', () => {
         setMapLoaded(true);
@@ -135,6 +320,10 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
         setTimeout(() => {
           map.resize();
         }, 400);
+      });
+
+      map.on('styledata', () => {
+        setStyleLoadedToken(prev => prev + 1);
       });
 
       map.on('move', () => {
@@ -164,16 +353,96 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
     }
   }, [isSelectingCoords, onSelectCoords]);
 
+  // Helper to check if expressions container any zoom-specific evaluation rules
+  const hasZoomExpr = (val: any): boolean => {
+    if (val === 'zoom' || (Array.isArray(val) && val[0] === 'zoom')) {
+      return true;
+    }
+    if (Array.isArray(val)) {
+      return val.some(hasZoomExpr);
+    }
+    return false;
+  };
+
+  // Helper to safely multiply step/interpolate stop sizes by scale factor without breaking MapLibre AST constraints
+  const scaleValue = (val: any, scale: number): any => {
+    if (typeof val === 'number') {
+      return val * scale;
+    }
+    if (Array.isArray(val)) {
+      const op = val[0];
+      if (op === 'interpolate') {
+        const result = [...val];
+        for (let i = 4; i < result.length; i += 2) {
+          result[i] = scaleValue(result[i], scale);
+        }
+        return result;
+      }
+      if (op === 'step') {
+        const result = [...val];
+        result[2] = scaleValue(result[2], scale);
+        for (let i = 4; i < result.length; i += 2) {
+          result[i] = scaleValue(result[i], scale);
+        }
+        return result;
+      }
+      if (!hasZoomExpr(val)) {
+        return ['*', val, scale];
+      }
+    }
+    return val;
+  };
+
+  // Scale label text sizes dynamically across loaded symbol layers
+  const applyLabelScaling = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    try {
+      const style = map.getStyle();
+      if (!style || !style.layers) return;
+      
+      style.layers.forEach((layer: any) => {
+        if (layer.type === 'symbol') {
+          const layerId = layer.id;
+          let originalSize = originalTextSizesRef.current[layerId];
+          if (originalSize === undefined) {
+            originalSize = map.getLayoutProperty(layerId, 'text-size');
+            if (originalSize === undefined) {
+              originalSize = 12; // default standard
+            }
+            originalTextSizesRef.current[layerId] = originalSize;
+          }
+
+          if (labelTextSizeScale === 1.0) {
+            map.setLayoutProperty(layerId, 'text-size', originalSize);
+          } else {
+            const scaled = scaleValue(originalSize, labelTextSizeScale);
+            map.setLayoutProperty(layerId, 'text-size', scaled);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Dynamic label scaling adjustment skipped on some layers:", err);
+    }
+  };
+
   // Support changing tile style layers dynamic action
   useEffect(() => {
     if (mapRef.current && mapLoaded) {
-      mapRef.current.setStyle(
-        isLightMode 
-          ? 'https://tiles.openfreemap.org/styles/positron' 
-          : 'https://tiles.openfreemap.org/styles/dark'
-      );
+      originalTextSizesRef.current = {}; // Reset baseline styles cache
+      mapRef.current.setStyle(getStyleSpecification(selectedStyle));
     }
-  }, [isLightMode, mapLoaded]);
+  }, [selectedStyle, mapLoaded]);
+
+  // Apply text size scale factors when style loads or selector changes
+  useEffect(() => {
+    if (mapRef.current && mapLoaded) {
+      const timer = setTimeout(() => {
+        applyLabelScaling();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [labelTextSizeScale, styleLoadedToken, mapLoaded]);
 
   // Fly mapping center to active selected branch
   useEffect(() => {
@@ -256,7 +525,7 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
     } catch (err) {
       console.error("GeoJSON nested lines setup failed:", err);
     }
-  }, [filteredBranches, branches, mapLoaded, isLightMode, hierarchyLevels]);
+  }, [filteredBranches, branches, mapLoaded, isLightMode, hierarchyLevels, selectedStyle, styleLoadedToken]);
 
   // Sync Vector Marker Overlays reactive hooks
   useEffect(() => {
@@ -349,8 +618,8 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
   }, [filteredBranches, hierarchyLevels, setSelectedBranch, isLightMode]);
 
   return (
-    <div className={`flex flex-col w-full h-full min-h-[750px] relative rounded-2xl overflow-hidden font-sans shadow-2xl border transition-all duration-350 
-      ${isFullscreen ? 'fixed inset-0 z-[100] w-screen h-screen rounded-none border-none' : ''} 
+    <div className={`flex flex-col w-full h-full ${isFullscreen ? 'min-h-0' : 'min-h-[750px]'} relative rounded-2xl overflow-hidden font-sans shadow-2xl border transition-all duration-350 
+      ${isFullscreen ? 'fixed inset-0 z-[100] w-screen h-screen rounded-none border-none shadow-none' : ''} 
       ${isLightMode ? 'bg-[#f8fafc] border-slate-200 text-slate-800 light-mode-map' : 'bg-[#06060a] border-white/10 text-white'}`}
     >
       
@@ -481,17 +750,121 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
         .light-mode-map .custom-maplibre-popup .text-link-hover { color: #7e22ce; }
         .light-mode-map .custom-maplibre-popup .text-notes { color: #475569; }
       `}</style>
-
-      {/* TOP FILTERS PANEL & OPERATIONS CONTROLS */}
-      <div className={`w-full p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 border-b transition-colors duration-300 z-10 select-none ${isLightMode ? 'bg-[#ffffff] border-slate-200' : 'bg-[#0a0a0f] border-white/5'}`}>
+      <div className={`w-full ${isFullscreen ? 'py-1.5 px-4 h-12 border-b flex-nowrap shadow-md z-40' : 'py-2.5 px-4 border-b flex-wrap'} flex items-center justify-between gap-3 select-none text-xs transition-all ${isLightMode ? 'bg-white border-slate-202' : 'bg-[#0a0a0f] border-white/5'}`}>
         
-        {/* Visual Title Header and Theme Switching Trigger */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-5 justify-between w-full lg:w-auto shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider uppercase border transition-colors ${isLightMode ? 'bg-purple-100 border-purple-200 text-purple-700' : 'bg-purple-500/10 border-white/5 text-purple-400'}`}>
-                Presence Command
+        {/* Filters cluster */}
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+          
+          {/* Main search field with floating autocomplete dropdown */}
+          <div className="relative w-full max-w-[200px] sm:max-w-[240px]">
+            <Search className={`absolute left-2.5 top-2.5 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`} size={11} />
+            <input 
+              type="text" 
+              placeholder="Search global places & nodes..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className={`w-full rounded-lg pl-8 pr-2.5 py-1.5 text-[11px] focus:outline-none focus:border-purple-500/50 border transition-all ${isLightMode ? 'bg-slate-50 border-slate-202 text-slate-805 placeholder-slate-404' : 'bg-white/5 border-white/10 text-slate-205 placeholder-slate-505'}`}
+            />
+            {isSearchingPlaces && (
+              <span className="absolute right-2.5 top-2.5 text-[9px] text-purple-400 animate-pulse font-mono font-bold uppercase">
+                Loading...
               </span>
+            )}
+
+            {/* Float Suggestions list */}
+            {((searchQuery.trim().length >= 2 && filteredBranches.length > 0) || placeSuggestions.length > 0) && (
+              <div 
+                className={`absolute left-0 right-0 top-full mt-1.5 rounded-xl border shadow-[0_22px_45px_rgba(0,0,0,0.55)] z-[99] text-left overflow-hidden max-h-72 overflow-y-auto ${
+                  isLightMode 
+                    ? 'bg-white border-slate-202 text-slate-800 shadow-slate-300' 
+                    : 'bg-[#0b0c15] border-white/10 text-slate-200 shadow-black'
+                }`}
+              >
+                {/* 1. INTERNAL DATABASE BRANCH STATIONS */}
+                {searchQuery.trim().length >= 2 && filteredBranches.length > 0 && (
+                  <div>
+                    <div className={`px-3 py-1 text-[8px] font-bold font-mono uppercase tracking-widest border-b ${isLightMode ? 'bg-slate-100 text-slate-500 border-slate-202' : 'bg-white/[0.02] text-slate-500 border-white/5'}`}>
+                      Church Stations
+                    </div>
+                    {filteredBranches.slice(0, 4).map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBranch(b);
+                          setPlaceSuggestions([]);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-[11px] font-bold transition flex flex-col gap-0.5 border-b border-transparent ${isLightMode ? 'hover:bg-slate-50 border-slate-100 text-slate-800' : 'hover:bg-white/5 border-white/[0.01] text-white'}`}
+                      >
+                        <span className="truncate block font-semibold text-purple-400">{b.name}</span>
+                        <span className="text-[9px] text-slate-450 font-mono italic">{b.city}, {b.country}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2. OSM GLOBAL GEOLOCATION SUGGESTIONS */}
+                {placeSuggestions.length > 0 && (
+                  <div>
+                    <div className={`px-3 py-1 text-[8px] font-bold font-mono uppercase tracking-widest border-b border-t ${isLightMode ? 'bg-slate-100 text-slate-500 border-slate-202' : 'bg-white/[0.02] text-slate-550 border-white/5'}`}>
+                      Global Places & Streets
+                    </div>
+                    {placeSuggestions.map((place, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => handleSelectSuggestion(place)}
+                        className={`w-full px-3 py-2 text-left text-[11px] transition flex flex-col gap-0.5 border-b border-transparent ${isLightMode ? 'hover:bg-slate-50 border-slate-100 text-slate-800' : 'hover:bg-white/5 border-white/[0.01] text-slate-300'}`}
+                      >
+                        <span className="truncate block font-bold text-slate-200">{place.display_name.split(',')[0]}</span>
+                        <span className="text-[9px] text-slate-450 truncate block font-sans">{place.display_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {!isFullscreen && (
+            <>
+              {/* Tier select */}
+              <select
+                value={filterHierarchy}
+                onChange={e => setFilterHierarchy(e.target.value)}
+                className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold border transition focus:outline-none focus:border-purple-500/50 cursor-pointer ${isLightMode ? 'bg-slate-50 border-slate-202 text-slate-805' : 'bg-[#0a0a0f] border-white/10 text-slate-300'}`}
+              >
+                <option value="">All Tiers</option>
+                {hierarchyLevels.map((lvl) => (
+                  <option key={lvl.id} value={lvl.id}>{lvl.name}</option>
+                ))}
+              </select>
+
+              {/* Country select */}
+              <select
+                value={filterCountry}
+                onChange={e => setFilterCountry(e.target.value)}
+                className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold border transition focus:outline-none focus:border-purple-500/50 cursor-pointer ${isLightMode ? 'bg-slate-50 border-slate-202 text-slate-805' : 'bg-[#0a0a0f] border-white/10 text-slate-300'}`}
+              >
+                <option value="">All Countries</option>
+                {uniqueCountries.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+
+              {/* City select */}
+              <select
+                value={filterCity}
+                onChange={e => setFilterCity(e.target.value)}
+                className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold border transition focus:outline-none focus:border-purple-500/55 cursor-pointer ${isLightMode ? 'bg-slate-50 border-slate-202 text-slate-805' : 'bg-[#0a0a0f] border-white/10 text-slate-300'}`}
+              >
+                <option value="">All Cities</option>
+                {uniqueCities.map((ct) => (
+                  <option key={ct} value={ct}>{ct}</option>
+                ))}
+              </select>
+
+              {/* Clean indicator with Reset */}
               {(searchQuery || filterHierarchy || filterCountry || filterCity) && (
                 <button
                   onClick={() => {
@@ -500,166 +873,129 @@ export const MapLibreDashboard: React.FC<MapLibreDashboardProps> = ({
                     setFilterCountry('');
                     setFilterCity('');
                   }}
-                  className={`px-2 py-0.5 text-[8px] font-black rounded border cursor-pointer uppercase ${isLightMode ? 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100' : 'border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/20'}`}
+                  className={`px-2 py-1 text-[10px] font-bold uppercase rounded-lg border cursor-pointer ${isLightMode ? 'border-red-200 bg-red-50 text-red-650 hover:bg-red-100' : 'border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}
                 >
-                  RESET FILTERS
+                  Reset
                 </button>
               )}
-            </div>
-            <h2 className={`text-lg font-bold tracking-tight mt-1 transition-colors flex items-center gap-2 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
-              <span>Spatial Operations</span>
-              {isFullscreen && (
-                <span className="text-[10px] bg-red-500/10 border border-red-500/35 text-red-400 px-2 py-0.5 rounded font-mono animate-pulse uppercase">
-                  Fullscreen Mode
-                </span>
-              )}
-            </h2>
-            <p className={`text-xs transition-colors ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-              Manage global corporate locations with optimized telemetry and controls.
-            </p>
-          </div>
 
-          {/* Compact visual Quick Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            
-            {/* Interactive Telemetry Manual guide activator */}
-            <button
-              onClick={() => setShowGuide(!showGuide)}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold tracking-wide transition cursor-pointer ${showGuide ? (isLightMode ? 'bg-purple-600 border-purple-600 text-white shadow-md' : 'bg-purple-500/20 border-purple-500/30 text-purple-300') : (isLightMode ? 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100' : 'bg-white/[0.02] border-white/5 text-slate-400 hover:bg-white/5')}`}
-            >
-              <BookOpen size={13} />
-              <span>{showGuide ? 'Hide Manual' : 'Show Manual'}</span>
-            </button>
-
-            {/* Simulated Fullscreen control trigger */}
-            <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold tracking-wide transition cursor-pointer ${isFullscreen ? 'bg-red-600 border-red-600 text-white' : (isLightMode ? 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100' : 'bg-white/[0.02] border-white/5 text-slate-400 hover:bg-white/5')}`}
-              title={isFullscreen ? "Exit Fullscreen (Esc)" : "Expand to Fullscreen"}
-            >
-              {isFullscreen ? (
-                <>
-                  <Minimize2 size={13} />
-                  <span>Exit Full [Esc]</span>
-                </>
-              ) : (
-                <>
-                  <Maximize2 size={13} />
-                  <span>View Fullscreen</span>
-                </>
-              )}
-            </button>
-
-            {/* Inline Theme Toggle Switch */}
-            <div className={`flex items-center gap-2 p-2 rounded-xl border transition-colors ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.02] border-white/5'}`}>
-              <span className={`text-[11px] font-semibold flex items-center gap-1 ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
-                {isLightMode ? <Sun size={11} className="text-amber-500" /> : <Moon size={11} className="text-purple-400" />} Theme:
+              {/* Active Nodes Count label */}
+              <span className={`text-[10px] font-mono font-semibold px-2 py-1 border rounded-lg ${isLightMode ? 'bg-slate-100 border-slate-202 text-slate-650' : 'bg-white/5 border-white/5 text-slate-400'}`}>
+                {filteredBranches.length}/{branches.length} Nodes
               </span>
-              <button
-                onClick={() => setIsLightMode(!isLightMode)}
-                className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isLightMode ? 'bg-purple-600' : 'bg-slate-705'}`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isLightMode ? 'translate-x-3.5' : 'translate-x-0'}`}
-                />
-              </button>
-            </div>
+            </>
+          )}
 
-          </div>
         </div>
 
-        {/* Global Node statistics counts and search, filter fields mapping matrix style */}
-        <div className="flex flex-col md:flex-row w-full items-stretch gap-4 flex-1">
+        {/* Global actions cluster - STYLE DROP DOWN + FULLSCREEN + THEME + GUIDE */}
+        <div className="flex items-center gap-2 shrink-0">
           
-          {/* Filters Fields Grid - Dynamic and fully responsive */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 flex-1">
-            
-            {/* Search Query */}
-            <div className="space-y-1">
-              <label className={`block text-[10px] font-bold font-mono uppercase tracking-wider ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>Search</label>
-              <div className="relative">
-                <Search className={`absolute left-3.5 top-3.5 ${isLightMode ? 'text-slate-400' : 'text-slate-500'}`} size={13} />
-                <input 
-                  type="text" 
-                  placeholder="Name, leader or city..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className={`w-full border rounded-xl p-3 pl-10 text-xs font-semibold focus:outline-none focus:border-purple-500/50 transition-all ${isLightMode ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400' : 'bg-white/5 border-white/10 text-slate-200 placeholder-slate-500'}`}
-                />
-              </div>
-            </div>
+          {/* Map Style Chooser Dropdown */}
+          <select
+            value={selectedStyle}
+            onChange={e => setSelectedStyle(e.target.value as any)}
+            className={`rounded-lg px-2 py-1.5 text-[11px] font-bold border transition focus:outline-none focus:border-purple-500/50 cursor-pointer uppercase font-mono tracking-wider ${isLightMode ? 'bg-slate-50 border-slate-202 text-purple-700 hover:bg-slate-100' : 'bg-[#0a0a0f] border-white/10 text-purple-400 hover:bg-white/5'}`}
+            title="Switch Map Tile Source"
+          >
+            <optgroup label="Vector (OpenFreeMap)" style={{ background: isLightMode ? '#fff' : '#0b0c15', color: '#888' }}>
+              <option value="liberty" style={{ color: isLightMode ? '#333' : '#fff' }}>🗺️ OSM Liberty</option>
+              <option value="bright" style={{ color: isLightMode ? '#333' : '#fff' }}>🎨 Colorful Bright</option>
+              <option value="positron" style={{ color: isLightMode ? '#333' : '#fff' }}>🌐 Clean Positron</option>
+              <option value="dark" style={{ color: isLightMode ? '#333' : '#fff' }}>🌌 Dark Matter</option>
+            </optgroup>
+            <optgroup label="Raster (OSM / Standard)" style={{ background: isLightMode ? '#fff' : '#0b0c15', color: '#888' }}>
+              <option value="osm" style={{ color: isLightMode ? '#333' : '#fff' }}>🛰️ Standard OSM</option>
+              <option value="opentopomap" style={{ color: isLightMode ? '#333' : '#fff' }}>⛰️ OpenTopoMap</option>
+              <option value="cartodb-light" style={{ color: isLightMode ? '#333' : '#fff' }}>🏙️ Carto Positron</option>
+              <option value="cartodb-dark" style={{ color: isLightMode ? '#333' : '#fff' }}>🌃 Carto Dark</option>
+            </optgroup>
+          </select>
 
-            {/* Hierarchy tiers */}
-            <div className="space-y-1">
-              <label className={`block text-[10px] font-bold font-mono uppercase tracking-wider ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>Tier Level</label>
-              <select
-                value={filterHierarchy}
-                onChange={e => setFilterHierarchy(e.target.value)}
-                className={`w-full border rounded-xl p-3 text-xs font-semibold focus:outline-none focus:border-purple-500/50 transition-all cursor-pointer ${isLightMode ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-[#0a0a0f] border-white/10 text-slate-200'}`}
-              >
-                <option value="" className={isLightMode ? 'bg-white text-slate-800' : 'bg-[#0a0a0f] text-slate-300'}>All Tiers</option>
-                {hierarchyLevels.map((lvl) => (
-                  <option key={lvl.id} value={lvl.id} className={isLightMode ? 'bg-white text-slate-800' : 'bg-[#0a0a0f] text-slate-250'}>
-                    {lvl.name} ({branches.filter(b => b.hierarchyLevel === lvl.id).length})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Territorial Country */}
-            <div className="space-y-1">
-              <label className={`block text-[10px] font-bold font-mono uppercase tracking-wider ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>Territorial Country</label>
-              <select
-                value={filterCountry}
-                onChange={e => setFilterCountry(e.target.value)}
-                className={`w-full border rounded-xl p-3 text-xs font-semibold focus:outline-none focus:border-purple-500/50 transition-all cursor-pointer ${isLightMode ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-[#0a0a0f] border-white/10 text-slate-200'}`}
-              >
-                <option value="" className={isLightMode ? 'bg-white text-slate-800' : 'bg-[#0a0a0f] text-slate-300'}>All Countries</option>
-                {uniqueCountries.map((c) => (
-                  <option key={c} value={c} className={isLightMode ? 'bg-white text-slate-800' : 'bg-[#0a0a0f] text-slate-250'}>{c}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* City lookup */}
-            <div className="space-y-1">
-              <label className={`block text-[10px] font-bold font-mono uppercase tracking-wider ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>District / City</label>
-              <select
-                value={filterCity}
-                onChange={e => setFilterCity(e.target.value)}
-                className={`w-full border rounded-xl p-3 text-xs font-semibold focus:outline-none focus:border-purple-500/50 transition-all cursor-pointer ${isLightMode ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-[#0a0a0f] border-white/10 text-slate-200'}`}
-              >
-                <option value="" className={isLightMode ? 'bg-white text-slate-800' : 'bg-[#0a0a0f] text-slate-300'}>All Districts</option>
-                {uniqueCities.map((ct) => (
-                  <option key={ct} value={ct} className={isLightMode ? 'bg-white text-slate-800' : 'bg-[#0a0a0f] text-slate-250'}>{ct}</option>
-                ))}
-              </select>
-            </div>
-
+          {/* Visual Zoom Magnifier Slider */}
+          <div 
+            className={`rounded-lg px-2.5 py-1 flex items-center gap-2 border text-[11px] font-bold font-mono tracking-wider transition ${
+              isLightMode 
+                ? 'bg-slate-50 border-slate-202 text-purple-700' 
+                : 'bg-[#0a0a0f] border-white/10 text-purple-400'
+            }`}
+            title="Visual Magnification Zoom (Keeps current fixed scale of tiles but zooms in visually to make small text details readable)"
+          >
+            <ZoomIn size={12} className="shrink-0 text-purple-500" />
+            <span className="whitespace-nowrap select-none">Magnify: {magnification.toFixed(1)}x</span>
+            <input 
+              type="range"
+              min="1.0"
+              max="10.0"
+              step="0.1"
+              value={magnification}
+              onChange={e => setMagnification(Number(e.target.value))}
+              className="accent-purple-500 hover:accent-purple-400 cursor-pointer w-20 sm:w-28 h-1 bg-purple-200/40 dark:bg-purple-900/40 rounded-lg appearance-none"
+            />
           </div>
 
-          {/* Quick Counter Bento panel */}
-          <div className={`p-4 border rounded-2xl grid grid-cols-2 gap-4 shrink-0 transition-colors md:w-56 ${isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.02] border-white/5'}`}>
-            <div className="text-left">
-              <span className={`block text-[9px] font-bold font-mono tracking-wider uppercase ${isLightMode ? 'text-slate-500' : 'text-slate-500'}`}>Active Nodes</span>
-              <span className={`text-2xl font-black font-mono mt-0.5 block ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>{filteredBranches.length}</span>
-            </div>
-            <div className={`text-left pl-4 border-l transition-colors ${isLightMode ? 'border-slate-200' : 'border-white/5'}`}>
-              <span className={`block text-[9px] font-bold font-mono tracking-wider uppercase ${isLightMode ? 'text-slate-500' : 'text-slate-500'}`}>Total Nodes</span>
-              <span className={`text-2xl font-black font-mono mt-0.5 block ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>{branches.length}</span>
-            </div>
+          {/* Map Scale Indicator */}
+          <div 
+            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold border flex items-center gap-1.5 font-mono tracking-wider whitespace-nowrap uppercase select-none ${
+              isLightMode 
+                ? 'bg-slate-50 border-slate-202 text-purple-700' 
+                : 'bg-[#0a0a0f] border-white/10 text-purple-400'
+            }`}
+            title="Current Map Zoom Scale"
+          >
+            <Compass size={12} className="shrink-0 text-purple-500" />
+            <span>Scale: {viewport.zoom.toFixed(1)}x</span>
           </div>
+          {!isFullscreen && (
+            <button
+              onClick={() => setShowGuide(!showGuide)}
+              className={`p-1.5 rounded-lg border flex items-center gap-1 text-[11px] font-bold transition cursor-pointer ${showGuide ? (isLightMode ? 'bg-purple-600 border-purple-600 text-white shadow' : 'bg-purple-500/20 border-purple-500/30 text-purple-300') : (isLightMode ? 'bg-slate-50 border-slate-202 text-slate-650 hover:bg-slate-100' : 'bg-white/[0.02] border-white/5 text-slate-400 hover:bg-white/5')}`}
+              title="Toggle Guide Panel"
+            >
+              <BookOpen size={12} />
+              <span className="hidden sm:inline">Manual Guide</span>
+            </button>
+          )}
+
+          {/* Theme switcher toggle */}
+          {!isFullscreen && (
+            <button
+              onClick={() => setIsLightMode(!isLightMode)}
+              className={`p-1.5 rounded-lg border flex items-center gap-1 text-[11px] font-bold transition cursor-pointer ${isLightMode ? 'bg-slate-100 border-slate-202 text-slate-750' : 'bg-white/[0.02] border-white/5 text-slate-300'}`}
+              title="Toggle Theme"
+            >
+              {isLightMode ? <Sun size={12} className="text-amber-500" /> : <Moon size={12} className="text-purple-400" />}
+              <span className="hidden sm:inline">{isLightMode ? 'Light' : 'Dark'}</span>
+            </button>
+          )}
+
+          {/* Fullscreen Button */}
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className={`p-1.5 rounded-lg border flex items-center gap-1.5 text-[11px] font-extrabold transition cursor-pointer ${isFullscreen ? 'bg-red-650 border-red-650 text-white animate-pulse' : (isLightMode ? 'bg-slate-50 border-slate-202 text-slate-650 hover:bg-slate-100' : 'bg-white/[0.02] border-white/5 text-slate-400 hover:bg-white/5')}`}
+            title="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+            <span>{isFullscreen ? 'Exit Full' : 'Fullscreen'}</span>
+          </button>
 
         </div>
 
       </div>
 
       {/* LOWER MAP CONTROLLER & VIEWPORT SPACE */}
-      <div className="flex-1 w-full min-h-[500px] lg:min-h-[550px] relative flex overflow-hidden">
+      <div className={`flex-1 w-full ${isFullscreen ? 'min-h-0' : 'min-h-[500px] lg:min-h-[550px]'} relative flex overflow-hidden`}>
         
         {/* Core Canvas Element container */}
         <div className="flex-1 h-full min-h-0 relative">
-          <div className="absolute inset-0 w-full h-full z-0" ref={mapContainerRef} />
+          {/* Core map container is scale-transformed to visually magnify pixels/text on high-dpi and raster tiles */}
+          <div className="absolute inset-0 w-full h-full z-0 overflow-hidden">
+            <div 
+              className="w-full h-full transition-all duration-300 ease-out origin-center" 
+              ref={mapContainerRef} 
+              style={{ transform: `scale(${magnification})` }}
+            />
+          </div>
 
           {/* Compass / Coordinate overview layer */}
           <div className="absolute bottom-5 left-5 z-10 pointer-events-none select-none">
